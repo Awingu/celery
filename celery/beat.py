@@ -14,6 +14,7 @@ import time
 import shelve
 import sys
 import traceback
+import socket
 
 from threading import Event, Thread
 
@@ -21,6 +22,7 @@ from billiard import Process, ensure_multiprocessing
 from billiard.common import reset_signals
 from kombu.utils import cached_property, reprcall
 from kombu.utils.functional import maybe_evaluate
+from amqp.exceptions import ConnectionError, ChannelError
 
 from . import __version__
 from . import platforms
@@ -457,8 +459,26 @@ class Service(object):
             signals.beat_embedded_init.send(sender=self)
             platforms.set_process_title('celery beat')
 
+        connection = None
+        beat_master = None
         try:
             while not self._is_shutdown.is_set():
+                try:
+                    if not connection:
+                        connection = self.app.connection()
+                    beat_master = connection.SimpleQueue(
+                        'heartbeat.master.mutex',
+                        queue_opts={'exclusive': True})
+                except (socket.error, ConnectionError):
+                    info('beat: connection lost')
+                    connection = None
+                    time.sleep(1)
+                    continue
+                except ChannelError:
+                    debug('beat: another beat is working, sleeping')
+                    time.sleep(1)
+                    continue
+
                 interval = self.scheduler.tick()
                 interval = interval + drift if interval else interval
                 if interval and interval > 0:
