@@ -460,15 +460,13 @@ class Service(object):
             platforms.set_process_title('celery beat')
 
         connection = None
-        beat_master = None
         try:
             while not self._is_shutdown.is_set():
                 try:
                     if not connection:
                         connection = self.app.connection()
-                    beat_master = connection.SimpleQueue(
-                        'heartbeat.master.mutex',
-                        queue_opts={'exclusive': True})
+                    connection.SimpleQueue('heartbeat.master.mutex',
+                                           queue_opts={'exclusive': True})
                 except (socket.error, ConnectionError):
                     info('beat: connection lost')
                     connection = None
@@ -476,8 +474,11 @@ class Service(object):
                     continue
                 except ChannelError:
                     debug('beat: another beat is working, sleeping')
-                    time.sleep(1)
+                    time.sleep(60)
                     continue
+
+                # reload the schedule in case another beat did the last run
+                self.scheduler.setup_schedule()
 
                 interval = self.scheduler.tick()
                 interval = interval + drift if interval else interval
