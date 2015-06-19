@@ -459,6 +459,10 @@ class Service(object):
             signals.beat_embedded_init.send(sender=self)
             platforms.set_process_title('celery beat')
 
+        # save the schedule in case we didn't have a last_run_at yet
+        for entry in self.scheduler.schedule.values():
+            entry.save()
+
         connection = None
         try:
             while not self._is_shutdown.is_set():
