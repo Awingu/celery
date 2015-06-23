@@ -14,7 +14,7 @@ import time
 import shelve
 import sys
 import traceback
-import socket
+import random
 
 from threading import Event, Thread
 
@@ -22,7 +22,7 @@ from billiard import Process, ensure_multiprocessing
 from billiard.common import reset_signals
 from kombu.utils import cached_property, reprcall
 from kombu.utils.functional import maybe_evaluate
-from amqp.exceptions import ConnectionError, ChannelError
+from db_mutex import db_mutex, DBMutexError
 
 from . import __version__
 from . import platforms
@@ -463,28 +463,19 @@ class Service(object):
         for entry in self.scheduler.schedule.values():
             entry.save()
 
-        connection = None
         try:
             while not self._is_shutdown.is_set():
                 try:
-                    if not connection:
-                        connection = self.app.connection()
-                    connection.SimpleQueue('heartbeat.master.mutex',
-                                           queue_opts={'exclusive': True})
-                except (socket.error, ConnectionError):
-                    info('beat: connection lost')
-                    connection = None
-                    time.sleep(1)
-                    continue
-                except ChannelError:
+                    with db_mutex('celerybeat'):
+                        # reload the schedule in case another beat ran last
+                        self.scheduler.setup_schedule()
+                        interval = self.scheduler.tick()
+                except DBMutexError:
                     debug('beat: another beat is working, sleeping')
-                    time.sleep(60)
+                    time.sleep(random.randint(60, 300))
                     continue
 
-                # reload the schedule in case another beat did the last run
-                self.scheduler.setup_schedule()
-
-                interval = self.scheduler.tick()
+                # no point in waiting less than the time to the next task
                 interval = interval + drift if interval else interval
                 if interval and interval > 0:
                     debug('beat: Waking up %s.',
