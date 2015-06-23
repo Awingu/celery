@@ -22,7 +22,8 @@ from billiard import Process, ensure_multiprocessing
 from billiard.common import reset_signals
 from kombu.utils import cached_property, reprcall
 from kombu.utils.functional import maybe_evaluate
-from db_mutex import db_mutex, DBMutexError
+
+from awingucore.clouddesktop.libs.tasks.models import locked, LockError
 
 from . import __version__
 from . import platforms
@@ -466,11 +467,11 @@ class Service(object):
         try:
             while not self._is_shutdown.is_set():
                 try:
-                    with db_mutex('celerybeat'):
+                    with locked('celerybeat', 60):
                         # reload the schedule in case another beat ran last
                         self.scheduler.setup_schedule()
                         interval = self.scheduler.tick()
-                except DBMutexError:
+                except LockError:
                     debug('beat: another beat is working, sleeping')
                     time.sleep(random.randint(60, 300))
                     continue
