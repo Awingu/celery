@@ -14,6 +14,7 @@ import time
 import shelve
 import sys
 import traceback
+import random
 
 from threading import Event, Thread
 
@@ -472,7 +473,7 @@ class Service(object):
                         interval = self.scheduler.tick()
                 except LockError:
                     debug('beat: another beat is working, sleeping')
-                    time.sleep(300)
+                    time.sleep(random.randint(60, 300))
                     continue
 
                 # no point in waiting less than the time to the next task
