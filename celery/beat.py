@@ -14,6 +14,7 @@ import time
 import shelve
 import sys
 import traceback
+import random
 
 from threading import Event, Thread
 
@@ -22,6 +23,8 @@ from billiard.process import Process
 from billiard.common import reset_signals
 from kombu.utils import cached_property, reprcall
 from kombu.utils.functional import maybe_evaluate
+
+from awingucore.clouddesktop.libs.tasks.models import locked, LockError
 
 from . import __version__
 from . import platforms
@@ -474,9 +477,23 @@ class Service(object):
             signals.beat_embedded_init.send(sender=self)
             platforms.set_process_title('celery beat')
 
+        # save the schedule in case we didn't have a last_run_at yet
+        for entry in self.scheduler.schedule.values():
+            entry.save()
+
         try:
             while not self._is_shutdown.is_set():
-                interval = self.scheduler.tick()
+                try:
+                    with locked('celerybeat', 60):
+                        # reload the schedule in case another beat ran last
+                        self.scheduler.setup_schedule()
+                        interval = self.scheduler.tick()
+                except LockError:
+                    debug('beat: another beat is working, sleeping')
+                    time.sleep(random.randint(60, 300))
+                    continue
+
+                # no point in waiting less than the time to the next task
                 interval = interval + drift if interval else interval
                 if interval and interval > 0:
                     debug('beat: Waking up %s.',
