@@ -24,8 +24,6 @@ from billiard.common import reset_signals
 from kombu.utils import cached_property, reprcall
 from kombu.utils.functional import maybe_evaluate
 
-from awingucore.clouddesktop.libs.tasks.models import locked, LockError
-
 from . import __version__
 from . import platforms
 from . import signals
@@ -480,6 +478,8 @@ class Service(object):
         # save the schedule in case we didn't have a last_run_at yet
         for entry in self.scheduler.schedule.values():
             entry.save()
+
+        from awingucore.clouddesktop.libs.tasks.models import locked, LockError
 
         try:
             while not self._is_shutdown.is_set():
