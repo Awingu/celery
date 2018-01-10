@@ -479,7 +479,8 @@ class Service(object):
         for entry in self.scheduler.schedule.values():
             entry.save()
 
-        from awingucore.clouddesktop.libs.tasks.models import locked, LockError
+        # This refers to the tasks app in awingucore.
+        from tasks.models import locked, LockError
 
         try:
             while not self._is_shutdown.is_set():
